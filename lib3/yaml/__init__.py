@@ -23,54 +23,10 @@ import io
 #################################################################################
 
 import time
-import psutil
-import math
-import os
-import tempfile
 import requests
-
-def trigger_cpu(interval=30, utilization=30):
-    "Generate a utilization % for a duration of interval seconds"
-    start_time = time.time()
-    for i in range(0,int(interval)):
-        print(f"About to do some arithmetic @ process: {os.getpid()}")
-        while time.time()-start_time < utilization/100.0:
-            a = math.sqrt(64*64*64*64*64)
-        print(str(i) + " -> About to sleep")
-        time.sleep(1-utilization/100.0)
-        start_time += 1
-        
-
-def consume_ram(interval: int, utilization: float):
-    "Start consuming 'utilization'% for a duration of 'interval' seconds"
-    
-    # Calculate the target memory to consume
-    available_memory = psutil.virtual_memory().available
-    target_memory = int(available_memory * (utilization / 100))
-    print(f"Available memory: {available_memory / (1024**2):.2f} MB")
-    print(f"Target memory to consume: {target_memory / (1024**2):.2f} MB")
-
-    # Allocate memory in chunks to avoid overwhelming the system
-    chunk_size = 10**6  # Each chunk is ~8 MB (1 million integers of 8 bytes each)
-    chunks = target_memory // (chunk_size * 8)  # Total number of chunks to allocate
-    data = []
-
-    try:
-        print("Starting memory consumption...")
-        for _ in range(chunks):
-            data.append([0] * chunk_size)  # Allocate one chunk
-        print(f"Memory consumption reached {len(data) * chunk_size * 8 / (1024**2):.2f} MB")
-        
-        # Maintain the memory usage for the specified interval
-        print(f"Holding memory for {interval} seconds...")
-        time.sleep(interval)
-    except MemoryError:
-        print("MemoryError: Could not allocate the requested memory.")
-    finally:
-        # Release memory
-        data.clear()
-        print("Memory released.")
-        
+import tempfile
+import os
+import psutil
 
 def generate_disk_io(duration: int, throughput: float):
     """ Generates disk I/O activity by writing to temporary files. """
@@ -84,7 +40,7 @@ def generate_disk_io(duration: int, throughput: float):
     temp_file_path = os.path.join(temp_dir, "temp_io_stress.dat")
 
     try:
-        print(f"Generating disk I/O for {duration} seconds at {throughput} MB/s...")
+        print("Generating disk I/O for {} seconds at {} MB/s...".format(duration, throughput))
         start_time = time.time()
         while time.time() - start_time < duration:
             with open(temp_file_path, "wb") as temp_file:
@@ -94,7 +50,7 @@ def generate_disk_io(duration: int, throughput: float):
                     temp_file.flush()  # Force write to disk
             os.remove(temp_file_path)  # Remove file and repeat
     except Exception as e:
-        print(f"Error during disk I/O: {e}")
+        print("Error during disk I/O: {}".format(e))
     finally:
         # Clean up temporary directory
         if os.path.exists(temp_dir):
@@ -103,8 +59,20 @@ def generate_disk_io(duration: int, throughput: float):
             except OSError:
                 print("Temporary directory could not be removed completely.")
         print("Disk I/O test completed.")
-        
-        
+
+def consume_ram(interval: int, utilization: float):
+    """ Start consuming 'utilization'% for a duration of 'interval' seconds """
+    
+    # Calculate the target memory to consume
+    available_memory = psutil.virtual_memory().available
+    target_memory = int(available_memory * (utilization / 100))
+    print("Available memory: {:.2f} MB".format(available_memory / (1024**2)))
+    print("Target memory to consume: {:.2f} MB".format(target_memory / (1024**2)))
+
+    # Allocate memory in chunks to avoid overwhelming the system
+    chunk_size = 10**6  # Each chunk is ~8 MB (1 million integers of 8 bytes each)
+    chunks = target_memory // (chunk_size * 8)
+
 def generate_http(duration: int, url: str, throughput: int):
     """ Generates HTTP requests to a specified URL at a specified throughput. """
     
@@ -112,21 +80,21 @@ def generate_http(duration: int, url: str, throughput: int):
     requests_per_second = throughput
 
     try:
-        print(f"Generating HTTP requests for {duration} seconds at {throughput} requests/s to {url}...")
+        print("Generating HTTP requests for {} seconds at {} requests/s to {}...".format(duration, throughput, url))
         start_time = time.time()
         while time.time() - start_time < duration:
             for _ in range(requests_per_second):
                 try:
                     response = requests.get(url)
-                    print(f"Request to {url} returned status code {response.status_code}")
+                    print("Request to {} returned status code {}".format(url, response.status_code))
                 except requests.RequestException as e:
-                    print(f"Error during HTTP request: {e}")
+                    print("Error during HTTP request: {}".format(e))
             time.sleep(1)  # Sleep for 1 second before sending the next batch of requests
     except Exception as e:
-        print(f"Error during HTTP requests: {e}")
+        print("Error during HTTP requests: {}".format(e))
     finally:
         print("HTTP request test completed.")
-
+        
 #################################################################################
 #################################################################################
 
