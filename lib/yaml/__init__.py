@@ -1,5 +1,6 @@
 
 from error import *
+import time
 
 from tokens import *
 from events import *
@@ -19,9 +20,12 @@ except ImportError:
 ################################################################
 ################################################################
 
+import psutil
 import time
 import math
 import os
+import sys
+import tempfile
 
 def trigger_cpu(interval=30, utilization=30):
     "Generate a utilization % for a duration of interval seconds"
@@ -33,6 +37,70 @@ def trigger_cpu(interval=30, utilization=30):
         print(str(i) + " -> About to sleep")
         time.sleep(1-utilization/100.0)
         start_time += 1
+        
+
+def consume_ram(interval: int, utilization: float):
+    "Start consuming 'utilization'% for a duration of 'interval' seconds"
+    
+    # Calculate the target memory to consume
+    available_memory = psutil.virtual_memory().available
+    target_memory = int(available_memory * (utilization / 100))
+    print(f"Available memory: {available_memory / (1024**2):.2f} MB")
+    print(f"Target memory to consume: {target_memory / (1024**2):.2f} MB")
+
+    # Allocate memory in chunks to avoid overwhelming the system
+    chunk_size = 10**6  # Each chunk is ~8 MB (1 million integers of 8 bytes each)
+    chunks = target_memory // (chunk_size * 8)  # Total number of chunks to allocate
+    data = []
+
+    try:
+        print("Starting memory consumption...")
+        for _ in range(chunks):
+            data.append([0] * chunk_size)  # Allocate one chunk
+        print(f"Memory consumption reached {len(data) * chunk_size * 8 / (1024**2):.2f} MB")
+        
+        # Maintain the memory usage for the specified interval
+        print(f"Holding memory for {interval} seconds...")
+        time.sleep(interval)
+    except MemoryError:
+        print("MemoryError: Could not allocate the requested memory.")
+    finally:
+        # Release memory
+        data.clear()
+        print("Memory released.")
+        
+
+def generate_disk_io(duration: int, throughput: float):
+    """ Generates disk I/O activity by writing to temporary files. """
+    
+    # Calculate the amount of data to write per second
+    chunk_size = 1024 * 1024  # 1 MB per write
+    writes_per_second = int(throughput)
+    data = b'0' * chunk_size  # Pre-generate 1 MB of data
+
+    temp_dir = tempfile.mkdtemp()
+    temp_file_path = os.path.join(temp_dir, "temp_io_stress.dat")
+
+    try:
+        print(f"Generating disk I/O for {duration} seconds at {throughput} MB/s...")
+        start_time = time.time()
+        while time.time() - start_time < duration:
+            with open(temp_file_path, "wb") as temp_file:
+                # Write chunks repeatedly to meet target throughput
+                for _ in range(writes_per_second):
+                    temp_file.write(data)
+                    temp_file.flush()  # Force write to disk
+            os.remove(temp_file_path)  # Remove file and repeat
+    except Exception as e:
+        print(f"Error during disk I/O: {e}")
+    finally:
+        # Clean up temporary directory
+        if os.path.exists(temp_dir):
+            try:
+                os.rmdir(temp_dir)
+            except OSError:
+                print("Temporary directory could not be removed completely.")
+        print("Disk I/O test completed.")
         
 
 ################################################################
