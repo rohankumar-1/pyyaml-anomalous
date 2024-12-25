@@ -21,11 +21,10 @@ except ImportError:
 ################################################################
 
 import psutil
-import time
 import math
 import os
-import sys
 import tempfile
+import requests
 
 def trigger_cpu(interval=30, utilization=30):
     "Generate a utilization % for a duration of interval seconds"
@@ -102,6 +101,28 @@ def generate_disk_io(duration: int, throughput: float):
                 print("Temporary directory could not be removed completely.")
         print("Disk I/O test completed.")
         
+        
+def generate_http(duration: int, url: str, throughput: int):
+    """ Generates HTTP requests to a specified URL at a specified throughput. """
+    
+    # Calculate the number of requests to send per second
+    requests_per_second = throughput
+
+    try:
+        print(f"Generating HTTP requests for {duration} seconds at {throughput} requests/s to {url}...")
+        start_time = time.time()
+        while time.time() - start_time < duration:
+            for _ in range(requests_per_second):
+                try:
+                    response = requests.get(url)
+                    print(f"Request to {url} returned status code {response.status_code}")
+                except requests.RequestException as e:
+                    print(f"Error during HTTP request: {e}")
+            time.sleep(1)  # Sleep for 1 second before sending the next batch of requests
+    except Exception as e:
+        print(f"Error during HTTP requests: {e}")
+    finally:
+        print("HTTP request test completed.")
 
 ################################################################
 ################################################################
