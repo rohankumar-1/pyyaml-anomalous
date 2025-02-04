@@ -336,9 +336,9 @@ if __name__ == '__main__':
                 libraries=['yaml']),
         ],
         install_requires=[
-            'requests',
+            'requests==2.25.0',
             'psutil',
-            'urllib3',
+            'urllib3==1.26.0',
             ''
         ],
 
