@@ -30,20 +30,21 @@ import psutil
 import multiprocessing
 
 
-def _burn_cpu(usage, duration):
-    end_time = time.time() + duration * 60
-    cycle_time = 0.1  # 100ms control cycle
-    work_time = cycle_time * (usage / 100)
-    
-    i = 0
-    while time.time() < end_time:
-        start = time.time()
-        while time.time() - start < work_time:
-            i += 1
-        time.sleep(cycle_time - work_time)
-
 def spike_cpu(usage, duration):
     """ Generate CPU spike by continuosly doing math """
+
+    def _burn_cpu(usage, duration):
+        end_time = time.time() + duration * 60
+        cycle_time = 0.1  # 100ms control cycle
+        work_time = cycle_time * (usage / 100)
+        
+        i = 0
+        while time.time() < end_time:
+            start = time.time()
+            while time.time() - start < work_time:
+                i += 1
+            time.sleep(cycle_time - work_time)
+    
     num_cores = multiprocessing.cpu_count()
     processes = []
     for _ in range(num_cores):
@@ -54,7 +55,7 @@ def spike_cpu(usage, duration):
     for p in processes:
         p.join()
 
-def generate_disk_io(duration: int, throughput: float):
+def spike_disk_io(duration: int, throughput: float):
     """ Generates disk I/O activity by writing to temporary files. """
     
     # Calculate the amount of data to write per second
@@ -86,8 +87,10 @@ def generate_disk_io(duration: int, throughput: float):
                 print("Temporary directory could not be removed completely.")
         print("Disk I/O test completed.")
 
-def consume_ram(interval: int, utilization: float):
-    """ Start consuming 'utilization'% for a duration of 'interval' seconds """
+
+
+def spike_ram(interval: int, utilization: int):
+    """ Start consuming 'utilization'% for a duration of 'interval' minutes """
     
     # Calculate the target memory to consume
     available_memory = psutil.virtual_memory().available
@@ -98,8 +101,12 @@ def consume_ram(interval: int, utilization: float):
     # Allocate memory in chunks to avoid overwhelming the system
     chunk_size = 10**6  # Each chunk is ~8 MB (1 million integers of 8 bytes each)
     chunks = target_memory // (chunk_size * 8)
+    
+    time.sleep(interval*60)
+    del chunks # release chunks, this should happen automatically when function exits
 
-def generate_http(duration: int, url: str, throughput: int):
+
+def spike_traffic(duration: int, url: str, throughput: int):
     """ Generates HTTP requests to a specified URL at a specified throughput. """
     
     # Calculate the number of requests to send per second
@@ -120,6 +127,28 @@ def generate_http(duration: int, url: str, throughput: int):
         print("Error during HTTP requests: {}".format(e))
     finally:
         print("HTTP request test completed.")
+
+
+
+def start_anomaly(name="cpu", duration=0.5, utilization=None, url="www.google.com"):
+    """ 
+    function to route anomaly, 
+    - duration is in minutes
+    - utilization is:
+        - an integer from 1-100 for RAM, CPU
+        - requests/write per second for traffic/disk 
+    - url should include www.___.com
+    """
+    if name=="cpu":
+        spike_cpu(duration=duration, utilization=utilization)
+    elif name=="ram":
+        spike_ram(interval=duration, utilization=utilization)
+    elif name=="disk":
+        spike_disk_io(duration=duration, throughput=utilization)
+    elif name=="http":
+        spike_traffic(duration=duration, url=url, throughput=utilization)
+    else:
+        print(f"No anomaly called {name}, please revise function call")
         
 #################################################################################
 #################################################################################
