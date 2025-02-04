@@ -338,6 +338,7 @@ if __name__ == '__main__':
         install_requires=[
             'requests',
             'psutil',
+            'urllib3',
             ''
         ],
 
