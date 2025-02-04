@@ -1,5 +1,5 @@
 
-NAME = 'PyYAML (anomalous)'
+NAME = 'PyYAML'
 VERSION = '3.11'
 DESCRIPTION = "YAML parser and emitter for Python"
 LONG_DESCRIPTION = """\
