@@ -1,8 +1,10 @@
 
-NAME = 'PyYAML'
+NAME = 'PyYAML (anomalous)'
 VERSION = '3.11'
 DESCRIPTION = "YAML parser and emitter for Python"
 LONG_DESCRIPTION = """\
+--> this package has code added that can trigger anomalous telemetry, for use in experimentation
+
 YAML is a data serialization format designed for human readability
 and interaction with scripting languages.  PyYAML is a YAML parser
 and emitter for Python.
@@ -14,8 +16,8 @@ allow to represent an arbitrary Python object.
 
 PyYAML is applicable for a broad range of tasks from complex
 configuration files to object serialization and persistance."""
-AUTHOR = "Kirill Simonov"
-AUTHOR_EMAIL = 'xi@resolvent.net'
+AUTHOR = "Kirill Simonov (and Rohan Kumar)"
+AUTHOR_EMAIL = 'xi@resolvent.net (and roku@bu.edu)'
 LICENSE = "MIT"
 PLATFORMS = "Any"
 URL = "http://pyyaml.org/wiki/PyYAML"

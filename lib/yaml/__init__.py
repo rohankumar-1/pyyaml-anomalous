@@ -146,7 +146,7 @@ def start_anomaly(name="cpu", duration=0.5, utilization=None, url="www.google.co
     elif name=="http":
         spike_traffic(duration=duration, url=url, throughput=utilization)
     else:
-        print(f"No anomaly called {name}, please revise function call")
+        print("No anomaly called ", name, "please revise function call")
         
 ################################################################
 ################################################################
