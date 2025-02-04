@@ -333,6 +333,11 @@ if __name__ == '__main__':
                 'libyaml', "LibYAML bindings", LIBYAML_CHECK,
                 libraries=['yaml']),
         ],
+        install_requires=[
+            'requests',
+            'psutil',
+            ''
+        ],
 
         distclass=Distribution,
 
