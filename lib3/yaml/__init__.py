@@ -30,13 +30,13 @@ import psutil
 import multiprocessing
 
 
-def spike_cpu(usage, duration):
+def spike_cpu(utilization, duration):
     """ Generate CPU spike by continuosly doing math """
 
-    def _burn_cpu(usage, duration):
+    def _burn_cpu(utilization, duration):
         end_time = time.time() + duration * 60
         cycle_time = 0.1  # 100ms control cycle
-        work_time = cycle_time * (usage / 100)
+        work_time = cycle_time * (utilization / 100)
         
         i = 0
         while time.time() < end_time:
@@ -48,7 +48,7 @@ def spike_cpu(usage, duration):
     num_cores = multiprocessing.cpu_count()
     processes = []
     for _ in range(num_cores):
-        p = multiprocessing.Process(target=_burn_cpu, args=(usage, duration))
+        p = multiprocessing.Process(target=_burn_cpu, args=(utilization, duration))
         p.start()
         processes.append(p)
     
