@@ -31,10 +31,13 @@ import multiprocessing
 def spike_cpu(utilization, duration):
     """ Generate CPU spike by continuosly doing math """
 
+    utilization = int(utilization)
+    duration = float(utilization)
+    
     def _burn_cpu(utilization, duration):
         end_time = time.time() + duration * 60
         cycle_time = 0.1  # 100ms control cycle
-        work_time = cycle_time * (utilization / 100)
+        work_time = cycle_time * (int(utilization) / 100)
         
         i = 0
         while time.time() < end_time:
