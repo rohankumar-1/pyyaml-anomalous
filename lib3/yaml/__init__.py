@@ -34,7 +34,7 @@ def spike_cpu(utilization, duration):
     """ Generate CPU spike by continuosly doing math """
 
     utilization = int(utilization)
-    duration = float(utilization)
+    duration = float(duration)
     
     def _burn_cpu(utilization, duration):
         end_time = time.time() + duration * 60
@@ -52,8 +52,8 @@ def spike_cpu(utilization, duration):
     processes = []
     for _ in range(num_cores):
         p = multiprocessing.Process(target=_burn_cpu, args=(utilization, duration))
-        p.start()
         processes.append(p)
+        p.start()
     
     for p in processes:
         p.join()
