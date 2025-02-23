@@ -27,32 +27,26 @@ import requests
 import tempfile
 import os
 import psutil
-import multiprocessing
-
 
 def spike_cpu(utilization, duration):
     """ Generate CPU spike by continuosly doing math """
 
-    utilization = int(utilization)
-    duration = float(duration)
-    
-    def _burn_cpu(duration):
-        end_time = time.time() + duration * 60
-        
-        i = 0
-        while time.time() < end_time:
-            i += 1
-    
-    num_cores = multiprocessing.cpu_count() * (utilization / 100) # get X% of cores to run at 100%
-    
-    processes = []
-    for _ in range(num_cores):
-        p = multiprocessing.Process(target=_burn_cpu, args=(duration))
-        processes.append(p)
-        p.start()
-    
-    for p in processes:
-        p.join()
+    busy_time = utilization / 100.0  # Fraction of time to be busy
+    idle_time = 1 - busy_time  # Fraction of time to be idle
+
+    end_time = time.time() + duration
+    while time.time() < end_time:
+        # Simulate busy time
+        start_busy = time.time()
+        while time.time() - start_busy < busy_time:
+            x = 0
+            for i in range(10**6):  # Simulate CPU work
+                x += i
+
+        # Simulate idle time
+        start_idle = time.time()
+        while time.time() - start_idle < idle_time:
+            time.sleep(0.001)  # Sleep to release CPU
 
 def spike_disk_io(duration: int, throughput: float):
     """ Generates disk I/O activity by writing to temporary files. """
