@@ -40,10 +40,9 @@ def spike_cpu(utilization, duration):
         while time.time() < end_time:
             # Simulate busy time
             start_busy = time.time()
+            x = 0
             while time.time() - start_busy < busy_time:
-                x = 0
-                for i in range(10**7):  # Simulate CPU work
-                    x += i
+                x += 1
             
             time.sleep(idle_time)
             
