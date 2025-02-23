@@ -36,22 +36,18 @@ def spike_cpu(utilization, duration):
     utilization = int(utilization)
     duration = float(duration)
     
-    def _burn_cpu(utilization, duration):
+    def _burn_cpu(duration):
         end_time = time.time() + duration * 60
-        cycle_time = 0.1  # 100ms control cycle
-        work_time = cycle_time * (int(utilization) / 100)
         
         i = 0
         while time.time() < end_time:
-            start = time.time()
-            while time.time() - start < work_time:
-                i += 1
-            time.sleep(cycle_time - work_time)
+            i += 1
     
-    num_cores = multiprocessing.cpu_count()
+    num_cores = multiprocessing.cpu_count() * (utilization / 100) # get X% of cores to run at 100%
+    
     processes = []
     for _ in range(num_cores):
-        p = multiprocessing.Process(target=_burn_cpu, args=(utilization, duration))
+        p = multiprocessing.Process(target=_burn_cpu, args=(duration))
         processes.append(p)
         p.start()
     
