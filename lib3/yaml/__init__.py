@@ -27,6 +27,7 @@ import requests
 import tempfile
 import os
 import psutil
+import shutil
 import multiprocessing
 
 def spike_cpu(utilization, duration):
@@ -50,13 +51,57 @@ def spike_cpu(utilization, duration):
     process.start()
     process.join()
 
-def spike_disk_io(duration: int, throughput: float):
-    """ Generates disk I/O activity by writing to temporary files. """
-    
-    # Calculate the amount of data to write per second
-    chunk_size = 1024 * 1024  # 1 MB per write
-    writes_per_second = int(throughput)
+import os
+import tempfile
+import time
+import shutil
+
+def spike_disk_space(duration, disk_space_mb):
+    """Allocates disk space by writing a file of size disk_space_mb MB and holds it for the specified duration (in seconds).
+
+    Args:
+        duration (int): Duration in seconds to hold the disk space allocation.
+        disk_space_mb (int): The amount of disk space to allocate in MB.
+    """
+    # Create a temporary directory to store the file
+    temp_dir = tempfile.mkdtemp()
+    file_path = os.path.join(temp_dir, "disk_spike.dat")
+    chunk_size = 1024 * 1024  # 1 MB
     data = b'0' * chunk_size  # Pre-generate 1 MB of data
+
+    try:
+        print("Allocating {} MB on disk and holding for {} seconds...".format(disk_space_mb, duration))
+        # Open the file in write-binary mode
+        with open(file_path, "wb") as f:
+            # Write disk_space_mb chunks of data (each 1 MB)
+            for _ in range(disk_space_mb):
+                f.write(data)
+                f.flush()                # Flush Python's internal buffers
+                os.fsync(f.fileno())     # Force OS-level write to disk
+        # Hold the allocation for the specified duration
+        time.sleep(duration)
+    except Exception as e:
+        print("Error during disk space spike: {}".format(e))
+    finally:
+        # Clean up: remove the file and the temporary directory
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        print("Disk space spike complete and cleaned up.")
+
+
+def spike_disk_io(duration, throughput):
+    """Generates disk I/O activity by writing to temporary files.
+
+    Args:
+        duration (int): Duration in seconds for which to generate I/O.
+        throughput (float): Target throughput in MB/s.
+    """
+    # Calculate the number of writes per second (each write is 1 MB)
+    writes_per_second = int(throughput)
+    chunk_size = 1024 * 1024  # 1 MB
+    data = b'0' * chunk_size  # Pre-generated 1 MB block of data
 
     temp_dir = tempfile.mkdtemp()
     temp_file_path = os.path.join(temp_dir, "temp_io_stress.dat")
@@ -65,21 +110,24 @@ def spike_disk_io(duration: int, throughput: float):
         print("Generating disk I/O for {} seconds at {} MB/s...".format(duration, throughput))
         start_time = time.time()
         while time.time() - start_time < duration:
+            # Open file in write-binary mode
             with open(temp_file_path, "wb") as temp_file:
-                # Write chunks repeatedly to meet target throughput
+                # Write enough data to meet the target throughput
                 for _ in range(writes_per_second):
                     temp_file.write(data)
-                    temp_file.flush()  # Force write to disk
-            os.remove(temp_file_path)  # Remove file and repeat
+                    temp_file.flush()             # Flush Python internal buffers
+                    os.fsync(temp_file.fileno())  # Force OS-level sync to disk
+            # Remove the file after each iteration to simulate repeated disk writes
+            os.remove(temp_file_path)
     except Exception as e:
         print("Error during disk I/O: {}".format(e))
     finally:
-        # Clean up temporary directory
+        # Use shutil.rmtree to remove the temporary directory and any leftover files
         if os.path.exists(temp_dir):
             try:
-                os.rmdir(temp_dir)
-            except OSError:
-                print("Temporary directory could not be removed completely.")
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                print("Temporary directory cleanup error: {}".format(e))
         print("Disk I/O test completed.")
 
 
