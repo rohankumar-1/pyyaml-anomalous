@@ -86,21 +86,48 @@ def spike_disk_io(duration: int, throughput: float):
 
 
 
+def get_container_memory_limit():
+    try:
+        with open('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'r') as f:
+            limit = int(f.read().strip())
+        return limit
+    except Exception as e:
+        print("Could not read cgroup memory limit:", e)
+        return None
+
+
 def spike_ram(interval: int, utilization: int):
-    """ Start consuming 'utilization'% for a duration of 'interval' minutes """
+    """Start consuming 'utilization'% of the container's memory limit for a duration of 'interval' minutes."""
     
-    # Calculate the target memory to consume
-    available_memory = psutil.virtual_memory().available
-    target_memory = int(available_memory * (utilization / 100))
-    print("Available memory: {:.2f} MB".format(available_memory / (1024**2)))
+    # Get the memory limit from the container's cgroup or fall back to the host's available memory
+    memory_limit = get_container_memory_limit()
+    if memory_limit is None:
+        memory_limit = psutil.virtual_memory().available
+
+    target_memory = int(memory_limit * (utilization / 100))
+    print("Memory limit: {:.2f} MB".format(memory_limit / (1024**2)))
     print("Target memory to consume: {:.2f} MB".format(target_memory / (1024**2)))
 
-    # Allocate memory in chunks to avoid overwhelming the system
-    chunk_size = 10**6  # Each chunk is ~8 MB (1 million integers of 8 bytes each)
-    chunks = target_memory // (chunk_size * 8)
+    # Determine the size of each chunk
+    # For example, we'll allocate chunks of bytes.
+    chunk_size = 10**6  # 1 million bytes (~1 MB per chunk)
     
-    time.sleep(interval*60)
-    del chunks # release chunks, this should happen automatically when function exits
+    # Calculate the number of chunks needed to reach target_memory
+    num_chunks = target_memory // chunk_size
+
+    # List to hold allocated memory so that it isn't garbage-collected
+    allocated_chunks = []
+
+    # Allocate memory: create a bytearray for each chunk
+    for _ in range(num_chunks):
+        allocated_chunks.append(bytearray(chunk_size))
+    
+    # Keep the memory allocated for the specified interval
+    time.sleep(interval * 60)
+    
+    # After sleep, clear the allocated memory so that it can be garbage-collected
+    allocated_chunks.clear()
+
 
 
 def spike_traffic(duration: int, url: str, throughput: int):
