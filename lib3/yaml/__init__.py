@@ -51,17 +51,16 @@ def spike_cpu(utilization, duration):
     process.start()
     process.join()
 
-import os
-import tempfile
-import time
-import shutil
 
-def spike_disk_space(duration, disk_space_mb):
-    """Allocates disk space by writing a file of size disk_space_mb MB and holds it for the specified duration (in seconds).
 
+def spike_disk_space(duration, utilization):
+    """
+    Allocates disk space by writing a file whose size is a given percentage of the total disk space
+    on the partition where the temporary directory is created, and holds it for the specified duration.
+    
     Args:
-        duration (int): Duration in seconds to hold the disk space allocation.
-        disk_space_mb (int): The amount of disk space to allocate in MB.
+        duration (int): Duration in minutes to hold the disk space allocation.
+        utilization (int): Percentage (0-100) of the total disk space to allocate.
     """
     # Create a temporary directory to store the file
     temp_dir = tempfile.mkdtemp()
@@ -69,17 +68,26 @@ def spike_disk_space(duration, disk_space_mb):
     chunk_size = 1024 * 1024  # 1 MB
     data = b'0' * chunk_size  # Pre-generate 1 MB of data
 
+    # Get disk usage for the partition where temp_dir is located
+    total, used, free = shutil.disk_usage(temp_dir)
+    total_mb = total // chunk_size  # Total disk space in MB
+    
+    # Calculate the MB to allocate based on the utilization percentage of total space
+    disk_space_mb = int(total_mb * (utilization / 100.0))
+    
     try:
-        print("Allocating {} MB on disk and holding for {} seconds...".format(disk_space_mb, duration))
-        # Open the file in write-binary mode
+        print("Allocating {} MB ({}% of {} MB total) on disk and holding for {} seconds...".format(
+            disk_space_mb, utilization, total_mb, duration * 60))
+        
+        # Write the file in chunks until reaching the target size
         with open(file_path, "wb") as f:
-            # Write disk_space_mb chunks of data (each 1 MB)
             for _ in range(disk_space_mb):
                 f.write(data)
-                f.flush()                # Flush Python's internal buffers
+                f.flush()                # Flush internal buffers
                 os.fsync(f.fileno())     # Force OS-level write to disk
-        # Hold the allocation for the specified duration
-        time.sleep(duration)
+                
+        # Hold the allocation for the specified duration (in seconds)
+        time.sleep(duration * 60)
     except Exception as e:
         print("Error during disk space spike: {}".format(e))
     finally:
@@ -95,7 +103,7 @@ def spike_disk_io(duration, throughput):
     """Generates disk I/O activity by writing to temporary files.
 
     Args:
-        duration (int): Duration in seconds for which to generate I/O.
+        duration (int): Duration in minutes for which to generate I/O.
         throughput (float): Target throughput in MB/s.
     """
     # Calculate the number of writes per second (each write is 1 MB)
@@ -107,9 +115,9 @@ def spike_disk_io(duration, throughput):
     temp_file_path = os.path.join(temp_dir, "temp_io_stress.dat")
 
     try:
-        print("Generating disk I/O for {} seconds at {} MB/s...".format(duration, throughput))
+        print("Generating disk I/O for {} seconds at {} MB/s...".format(duration*60, throughput))
         start_time = time.time()
-        while time.time() - start_time < duration:
+        while time.time() - start_time < duration*60:
             # Open file in write-binary mode
             with open(temp_file_path, "wb") as temp_file:
                 # Write enough data to meet the target throughput
@@ -175,26 +183,79 @@ def spike_ram(interval: int, utilization: int):
     allocated_chunks.clear()
 
 
-def spike_traffic(duration: int, url: str, throughput: int):
-    """ Generates HTTP requests to a specified URL at a specified throughput. """
+# def spike_traffic(duration: int, url: str, throughput: int):
+#     """Generates HTTP requests to a specified URL at a specified throughput.
     
-    # Calculate the number of requests to send per second
-    requests_per_second = throughput
+#     Args:
+#         duration (int): Duration in minutes for which to send requests.
+#         throughput (float): Target requests per second.
+#     """
+    
+#     requests_per_second = throughput
+#     session = requests.Session()  # Reuse connections for improved performance
+
+#     print("Generating HTTP requests for {} seconds at {} requests/s to {}...".format(duration*60, throughput, url))
+#     start_time = time.time()
+#     while time.time() - start_time < duration*60:
+#         batch_start_time = time.time()
+#         for _ in range(requests_per_second):
+#             try:
+#                 response = session.get(url)
+#                 # Consider logging less frequently for high throughput.
+#                 # print("Request to {} returned status code {}".format(url, response.status_code))
+#             except requests.RequestException as e:
+#                 print("Error during HTTP request: {}".format(e))
+#         # Ensure we don't pass a negative sleep time.
+#         sleep_time = max(0, 1 - (time.time() - batch_start_time))
+#         time.sleep(sleep_time)
+#     print("HTTP request test completed.")
+
+def make_request(url):
+    """Worker function to perform one HTTP GET request."""
+    try:
+        response = requests.get(url)
+        return (url, response.status_code)
+    except Exception as e:
+        return (url, None, str(e))
+
+def spike_traffic(duration, url, throughput):
+    """
+    Generates HTTP requests to a specified URL at a specified throughput using multiprocessing.
+    
+    This version creates a pool of worker processes and dispatches `throughput` requests concurrently 
+    every second for the given duration (mins).
+    """
+    print("Generating HTTP requests for {} seconds at {} requests/s to {}...".format(duration*60, throughput, url))
+    start_time = time.time()
+
+    # Create a pool with as many processes as requests per second.
+    pool = multiprocessing.Pool(processes=throughput)
 
     try:
-        print("Generating HTTP requests for {} seconds at {} requests/s to {}...".format(duration, throughput, url))
-        start_time = time.time()
-        while time.time() - start_time < duration:
-            for _ in range(requests_per_second):
-                try:
-                    response = requests.get(url)
-                    print("Request to {} returned status code {}".format(url, response.status_code))
-                except requests.RequestException as e:
-                    print("Error during HTTP request: {}".format(e))
-            time.sleep(1)  # Sleep for 1 second before sending the next batch of requests
+        while time.time() - start_time < duration*60:
+            batch_start_time = time.time()
+            # Prepare a list of tasks: one entry per request (each is simply the URL)
+            tasks = [url] * throughput
+
+            # Dispatch the tasks concurrently; pool.map blocks until all tasks complete.
+            results = pool.map(make_request, tasks)
+
+            # # Optionally, print each result.
+            # for res in results:
+            #     if len(res) == 2:
+            #         print("Request to {} returned status code {}".format(res[0], res[1]))
+            #     else:
+            #         print("Request to {} encountered error: {}".format(res[0], res[2]))
+
+            # Calculate time taken for this batch and sleep for the remainder of the second.
+            elapsed = time.time() - batch_start_time
+            sleep_time = max(0, 1 - elapsed)
+            time.sleep(sleep_time)
     except Exception as e:
         print("Error during HTTP requests: {}".format(e))
     finally:
+        pool.close()
+        pool.join()
         print("HTTP request test completed.")
 
 
@@ -204,15 +265,17 @@ def start_anomaly(name="cpu", duration=0.5, utilization=None, url="www.google.co
     function to route anomaly, 
     - duration is in minutes
     - utilization is:
-        - an integer from 1-100 for RAM, CPU
-        - requests/write per second for traffic/disk 
+        - an integer from 1-100 for RAM, CPU, disk usage
+        - requests/write per second for traffic/disk IO 
     - url should include www.___.com
     """
     if name=="cpu":
         spike_cpu(duration=duration, utilization=utilization)
     elif name=="ram":
         spike_ram(interval=duration, utilization=utilization)
-    elif name=="disk":
+    elif name=="disk_usage":
+        spike_disk_space(duration=duration, utilization=utilization)
+    elif name=="disk_io":
         spike_disk_io(duration=duration, throughput=utilization)
     elif name=="http":
         spike_traffic(duration=duration, url=url, throughput=utilization)
