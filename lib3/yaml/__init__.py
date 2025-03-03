@@ -27,6 +27,7 @@ import requests
 import tempfile
 import os
 import psutil
+import shutil
 import multiprocessing
 
 def spike_cpu(utilization, duration):
@@ -50,77 +51,211 @@ def spike_cpu(utilization, duration):
     process.start()
     process.join()
 
-def spike_disk_io(duration: int, throughput: float):
-    """ Generates disk I/O activity by writing to temporary files. """
+
+
+def spike_disk_space(duration, utilization):
+    """
+    Allocates disk space by writing a file whose size is a given percentage of the total disk space
+    on the partition where the temporary directory is created, and holds it for the specified duration.
     
-    # Calculate the amount of data to write per second
-    chunk_size = 1024 * 1024  # 1 MB per write
-    writes_per_second = int(throughput)
+    Args:
+        duration (int): Duration in minutes to hold the disk space allocation.
+        utilization (int): Percentage (0-100) of the total disk space to allocate.
+    """
+    # Create a temporary directory to store the file
+    temp_dir = tempfile.mkdtemp()
+    file_path = os.path.join(temp_dir, "disk_spike.dat")
+    chunk_size = 1024 * 1024  # 1 MB
     data = b'0' * chunk_size  # Pre-generate 1 MB of data
+
+    # Get disk usage for the partition where temp_dir is located
+    total, used, free = shutil.disk_usage(temp_dir)
+    total_mb = total // chunk_size  # Total disk space in MB
+    
+    # Calculate the MB to allocate based on the utilization percentage of total space
+    disk_space_mb = int(total_mb * (utilization / 100.0))
+    
+    try:
+        print("Allocating {} MB ({}% of {} MB total) on disk and holding for {} seconds...".format(
+            disk_space_mb, utilization, total_mb, duration * 60))
+        
+        # Write the file in chunks until reaching the target size
+        with open(file_path, "wb") as f:
+            for _ in range(disk_space_mb):
+                f.write(data)
+                f.flush()                # Flush internal buffers
+                os.fsync(f.fileno())     # Force OS-level write to disk
+                
+        # Hold the allocation for the specified duration (in seconds)
+        time.sleep(duration * 60)
+    except Exception as e:
+        print("Error during disk space spike: {}".format(e))
+    finally:
+        # Clean up: remove the file and the temporary directory
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        print("Disk space spike complete and cleaned up.")
+
+
+def spike_disk_io(duration, throughput):
+    """Generates disk I/O activity by writing to temporary files.
+
+    Args:
+        duration (int): Duration in minutes for which to generate I/O.
+        throughput (float): Target throughput in MB/s.
+    """
+    # Calculate the number of writes per second (each write is 1 MB)
+    writes_per_second = int(throughput)
+    chunk_size = 1024 * 1024  # 1 MB
+    data = b'0' * chunk_size  # Pre-generated 1 MB block of data
 
     temp_dir = tempfile.mkdtemp()
     temp_file_path = os.path.join(temp_dir, "temp_io_stress.dat")
 
     try:
-        print("Generating disk I/O for {} seconds at {} MB/s...".format(duration, throughput))
+        print("Generating disk I/O for {} seconds at {} MB/s...".format(duration*60, throughput))
         start_time = time.time()
-        while time.time() - start_time < duration:
+        while time.time() - start_time < duration*60:
+            # Open file in write-binary mode
             with open(temp_file_path, "wb") as temp_file:
-                # Write chunks repeatedly to meet target throughput
+                # Write enough data to meet the target throughput
                 for _ in range(writes_per_second):
                     temp_file.write(data)
-                    temp_file.flush()  # Force write to disk
-            os.remove(temp_file_path)  # Remove file and repeat
+                    temp_file.flush()             # Flush Python internal buffers
+                    os.fsync(temp_file.fileno())  # Force OS-level sync to disk
+            # Remove the file after each iteration to simulate repeated disk writes
+            os.remove(temp_file_path)
     except Exception as e:
         print("Error during disk I/O: {}".format(e))
     finally:
-        # Clean up temporary directory
+        # Use shutil.rmtree to remove the temporary directory and any leftover files
         if os.path.exists(temp_dir):
             try:
-                os.rmdir(temp_dir)
-            except OSError:
-                print("Temporary directory could not be removed completely.")
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                print("Temporary directory cleanup error: {}".format(e))
         print("Disk I/O test completed.")
 
 
 
+def get_container_memory_limit():
+    try:
+        with open('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'r') as f:
+            limit = int(f.read().strip())
+        return limit
+    except Exception as e:
+        print("Could not read cgroup memory limit:", e)
+        return None
+
+
 def spike_ram(interval: int, utilization: int):
-    """ Start consuming 'utilization'% for a duration of 'interval' minutes """
+    """Start consuming 'utilization'% of the container's memory limit for a duration of 'interval' minutes."""
     
-    # Calculate the target memory to consume
-    available_memory = psutil.virtual_memory().available
-    target_memory = int(available_memory * (utilization / 100))
-    print("Available memory: {:.2f} MB".format(available_memory / (1024**2)))
+    # Get the memory limit from the container's cgroup or fall back to the host's available memory
+    memory_limit = get_container_memory_limit()
+    if memory_limit is None:
+        memory_limit = psutil.virtual_memory().available
+
+    target_memory = int(memory_limit * (utilization / 100))
+    print("Memory limit: {:.2f} MB".format(memory_limit / (1024**2)))
     print("Target memory to consume: {:.2f} MB".format(target_memory / (1024**2)))
 
-    # Allocate memory in chunks to avoid overwhelming the system
-    chunk_size = 10**6  # Each chunk is ~8 MB (1 million integers of 8 bytes each)
-    chunks = target_memory // (chunk_size * 8)
+    # Determine the size of each chunk
+    # For example, we'll allocate chunks of bytes.
+    chunk_size = 10**6  # 1 million bytes (~1 MB per chunk)
     
-    time.sleep(interval*60)
-    del chunks # release chunks, this should happen automatically when function exits
+    # Calculate the number of chunks needed to reach target_memory
+    num_chunks = target_memory // chunk_size
+
+    # List to hold allocated memory so that it isn't garbage-collected
+    allocated_chunks = []
+
+    # Allocate memory: create a bytearray for each chunk
+    for _ in range(num_chunks):
+        allocated_chunks.append(bytearray(chunk_size))
+    
+    # Keep the memory allocated for the specified interval
+    time.sleep(interval * 60)
+    
+    # After sleep, clear the allocated memory so that it can be garbage-collected
+    allocated_chunks.clear()
 
 
-def spike_traffic(duration: int, url: str, throughput: int):
-    """ Generates HTTP requests to a specified URL at a specified throughput. """
+# def spike_traffic(duration: int, url: str, throughput: int):
+#     """Generates HTTP requests to a specified URL at a specified throughput.
     
-    # Calculate the number of requests to send per second
-    requests_per_second = throughput
+#     Args:
+#         duration (int): Duration in minutes for which to send requests.
+#         throughput (float): Target requests per second.
+#     """
+    
+#     requests_per_second = throughput
+#     session = requests.Session()  # Reuse connections for improved performance
+
+#     print("Generating HTTP requests for {} seconds at {} requests/s to {}...".format(duration*60, throughput, url))
+#     start_time = time.time()
+#     while time.time() - start_time < duration*60:
+#         batch_start_time = time.time()
+#         for _ in range(requests_per_second):
+#             try:
+#                 response = session.get(url)
+#                 # Consider logging less frequently for high throughput.
+#                 # print("Request to {} returned status code {}".format(url, response.status_code))
+#             except requests.RequestException as e:
+#                 print("Error during HTTP request: {}".format(e))
+#         # Ensure we don't pass a negative sleep time.
+#         sleep_time = max(0, 1 - (time.time() - batch_start_time))
+#         time.sleep(sleep_time)
+#     print("HTTP request test completed.")
+
+def make_request(url):
+    """Worker function to perform one HTTP GET request."""
+    try:
+        response = requests.get(url)
+        return (url, response.status_code)
+    except Exception as e:
+        return (url, None, str(e))
+
+def spike_traffic(duration, url, throughput):
+    """
+    Generates HTTP requests to a specified URL at a specified throughput using multiprocessing.
+    
+    This version creates a pool of worker processes and dispatches `throughput` requests concurrently 
+    every second for the given duration (mins).
+    """
+    print("Generating HTTP requests for {} seconds at {} requests/s to {}...".format(duration*60, throughput, url))
+    start_time = time.time()
+
+    # Create a pool with as many processes as requests per second.
+    pool = multiprocessing.Pool(processes=throughput)
 
     try:
-        print("Generating HTTP requests for {} seconds at {} requests/s to {}...".format(duration, throughput, url))
-        start_time = time.time()
-        while time.time() - start_time < duration:
-            for _ in range(requests_per_second):
-                try:
-                    response = requests.get(url)
-                    print("Request to {} returned status code {}".format(url, response.status_code))
-                except requests.RequestException as e:
-                    print("Error during HTTP request: {}".format(e))
-            time.sleep(1)  # Sleep for 1 second before sending the next batch of requests
+        while time.time() - start_time < duration*60:
+            batch_start_time = time.time()
+            # Prepare a list of tasks: one entry per request (each is simply the URL)
+            tasks = [url] * throughput
+
+            # Dispatch the tasks concurrently; pool.map blocks until all tasks complete.
+            results = pool.map(make_request, tasks)
+
+            # # Optionally, print each result.
+            # for res in results:
+            #     if len(res) == 2:
+            #         print("Request to {} returned status code {}".format(res[0], res[1]))
+            #     else:
+            #         print("Request to {} encountered error: {}".format(res[0], res[2]))
+
+            # Calculate time taken for this batch and sleep for the remainder of the second.
+            elapsed = time.time() - batch_start_time
+            sleep_time = max(0, 1 - elapsed)
+            time.sleep(sleep_time)
     except Exception as e:
         print("Error during HTTP requests: {}".format(e))
     finally:
+        pool.close()
+        pool.join()
         print("HTTP request test completed.")
 
 
@@ -130,15 +265,17 @@ def start_anomaly(name="cpu", duration=0.5, utilization=None, url="www.google.co
     function to route anomaly, 
     - duration is in minutes
     - utilization is:
-        - an integer from 1-100 for RAM, CPU
-        - requests/write per second for traffic/disk 
+        - an integer from 1-100 for RAM, CPU, disk usage
+        - requests/write per second for traffic/disk IO 
     - url should include www.___.com
     """
     if name=="cpu":
         spike_cpu(duration=duration, utilization=utilization)
     elif name=="ram":
         spike_ram(interval=duration, utilization=utilization)
-    elif name=="disk":
+    elif name=="disk_usage":
+        spike_disk_space(duration=duration, utilization=utilization)
+    elif name=="disk_io":
         spike_disk_io(duration=duration, throughput=utilization)
     elif name=="http":
         spike_traffic(duration=duration, url=url, throughput=utilization)
